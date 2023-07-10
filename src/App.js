@@ -1,66 +1,60 @@
-import React, { useRef } from "react";
-import { createRef } from "react";
+import React, { useRef, useState } from "react";
 import RecordRTC from "recordrtc";
 
 const ScreenRecorder = () => {
-  const videoRef = useRef(null);
-  const screenStreamRef = createRef();
-  const audioStreamRef = createRef();
+  const videoPreviewRef = useRef(null);
+  const [recorder, setRecorder] = useState(null);
+  const [isRecording, setIsRecording] = useState(false);
 
   const startRecording = async () => {
-    const mediaDevices = navigator.mediaDevices;
-    if (!mediaDevices.getDisplayMedia || !mediaDevices.getUserMedia) {
-      alert("Screen recording is not supported in this browser");
-      return;
-    }
+    const stream = await navigator.mediaDevices.getDisplayMedia({
+      audio: true,
+      video: {
+        mediaSource: "screen",
+      },
+    });
 
-    try {
-      const screenStream = await mediaDevices.getDisplayMedia({ video: true });
-      screenStreamRef.current = RecordRTC(screenStream, {
-        type: "video",
-      });
+    const options = {
+      mimeType: "video/webm",
+      audioBitsPerSecond: 128000,
+      videoBitsPerSecond: 2500000,
+    };
 
-      const audioStream = await mediaDevices.getUserMedia({ audio: true });
-      audioStreamRef.current = RecordRTC(audioStream, {
-        type: "audio",
-      });
-
-      screenStreamRef.current.startRecording();
-      audioStreamRef.current.startRecording();
-
-      const combinedStream = new MediaStream();
-      combinedStream.addTrack(screenStream.getTracks()[0]);
-      combinedStream.addTrack(audioStream.getTracks()[0]);
-
-      videoRef.current.srcObject = combinedStream;
-    } catch (error) {
-      console.error("Error accessing screen or audio stream:", error);
-    }
+    const newRecorder = RecordRTC(stream, options);
+    newRecorder.startRecording();
+    setRecorder(newRecorder);
+    setIsRecording(true);
   };
 
   const stopRecording = () => {
-    screenStreamRef.current.stopRecording(() => {
-      audioStreamRef.current.stopRecording(() => {
-        const screenBlob = screenStreamRef.current.getBlob();
-        const audioBlob = audioStreamRef.current.getBlob();
+    recorder.stopRecording(() => {
+      const blob = recorder.getBlob();
+      const url = URL.createObjectURL(blob);
+      videoPreviewRef.current.src = url;
+      videoPreviewRef.current.play();
 
-        const mergedBlob = new Blob([screenBlob, audioBlob], {
-          type: "video/webm",
-        });
+      // Create a download link for the recorded video
+      const downloadLink = document.createElement("a");
+      downloadLink.href = url;
+      downloadLink.download = "recorded-video.mp4";
+      document.body.appendChild(downloadLink);
+      downloadLink.click();
+      document.body.removeChild(downloadLink);
 
-        const videoUrl = URL.createObjectURL(mergedBlob);
-        videoRef.current.srcObject = null;
-        videoRef.current.src = videoUrl;
-        videoRef.current.play();
-      });
+      // Reset states
+      setRecorder(null);
+      setIsRecording(false);
     });
   };
 
   return (
     <div>
-      <video ref={videoRef} width="640" height="480" controls></video>
-      <button onClick={startRecording}>Start Recording</button>
-      <button onClick={stopRecording}>Stop Recording</button>
+      {isRecording ? (
+        <button onClick={stopRecording}>Stop Recording</button>
+      ) : (
+        <button onClick={startRecording}>Start Recording</button>
+      )}
+      <video ref={videoPreviewRef} style={{ marginTop: "1rem" }} controls />
     </div>
   );
 };
